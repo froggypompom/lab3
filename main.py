@@ -61,11 +61,11 @@ def move_player(player_car):
 
     keys = pygame.key.get_pressed()
     moved = False
-
+    prev_CTE = player_car.prev_y - 266
     current_CTE = player_car.y - 266
     # print(f"CTE = {current_CTE}")
 
-    player_car.steering_angle = controller.process(current_CTE)
+    player_car.steering_angle = controller.process(prev_CTE, current_CTE)
 
     if steer_bias:
         player_car.steering_angle += .3
@@ -161,60 +161,45 @@ class PlayerCar(AbstractCar):
 
 player_car = PlayerCar(1, 4)
 
-# create pid
-# controller = pid.PIDcontroller()
-# controller = pid.PIDcontroller([0.02, 1, 0.0001])
-
-p = [0.02, 1, 0.0001]
-# p = [0,0,0]
-dp = [1,1,1]
-
-total_sum = 0
-controller = pid.PIDcontroller(p)
-
-scroll = 0
 
 tiles = math.ceil(FrameWidth / bg.get_width()) + 1
 
-
-
 def drive():
 
-    total_sum = 0
+    sum_abs_CTE = 0
     scroll = 0
-
-    start = 0
+    count_timer= 0  # count 'timer' for 'stuck in loop' detection
 
     while 1:
-        clock.tick(1200) # You can change this during the optimization process
+        clock.tick(12000)
 
-        start += 1
+        count_timer += 1
 
-        scroll = draw(screen, player_car, scroll)
+        # scroll = draw(screen, player_car, scroll)
 
         move_player(player_car)
+        
+        sum_abs_CTE += abs(player_car.y - 266)
 
-        total_sum += abs(player_car.y - 266)
+        if player_car.x > 1200:
+            return sum_abs_CTE
 
-        if player_car.x > 1200 or player_car.x < 0 or player_car.y < 0 or player_car.y > 400 or start > 2000:
-            return total_sum, start
-            # quit()
-
+        elif player_car.x < 0 or player_car.y < 0 or player_car.y > 400 or count_timer > 1500:
+            return 1000000
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 quit()
 
 
-p = [0.02, 1, 0.0001]
-#p = [0,0,0]
-#dp = [0.01,0.01,0.01]
-dp = [1,1,1]
+p = [0.16, 7, 0.001]       # initial parameter values
+dp = [0.001,0.001,0.001]    # initial parameter deltas
 
-total_sum = 0
 
 controller = pid.PIDcontroller(p)
-best_error, start = drive()
-print(best_error)
+
+best_goodness = drive()     # initial value best performance variable
+
+print('fG', best_goodness) 
 
 threshhold = 0.001
 
@@ -223,19 +208,21 @@ while sum(dp) > threshhold:
         player_car = PlayerCar(1, 4)
         p[i] += dp[i] 
         controller = pid.PIDcontroller(p)
-        error, start = drive()
-        print("error: ")
-        print(error)
-        print(start)
-        if error < best_error:
-            best_error = error
+        goodness = drive()
+        print("goodness: ", goodness, 'BESTgoodness', best_goodness)
+        print('sum_dp: ', sum(dp))
+        print()
+        if goodness < best_goodness:
+            best_goodness = goodness
             dp[i] *= 1.1
         else:
             p[i] -= 2 * dp[i]  # Go into the other direction
-            error, start = drive()
-
-            if error < best_error:  # There was an improvement
-                best_error = error
+            player_car = PlayerCar(1, 4)
+            controller = pid.PIDcontroller(p)
+            goodness = drive()
+            print("else goodness: ", goodness)
+            if goodness < best_goodness:  # There was an improvement
+                best_goodness = goodness
                 dp[i] *= 1.05
             else:  # There was no improvement
                 p[i] += dp[i]
@@ -243,5 +230,5 @@ while sum(dp) > threshhold:
                 # direction, the step size might simply be too big.
                 dp[i] *= 0.95
 
-
+print("Final p: ", p)
 pygame.quit()
